@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>RP1 · Interactive 3D Assembly</title>
+<style>
+  :root{
+    --bg:#0a0e13; --panel:rgba(13,19,27,.85); --line:#223142; --line2:#2b3d54;
+    --txt:#dfe7f2; --dim:#7f95ad; --acc:#4f8cff; --ok:#39d98a; --warn:#ff9f43;
+  }
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:var(--txt)}
+  canvas#gl{position:fixed;inset:0;display:block;touch-action:none}
+
+  header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:8px;
+    padding:12px 16px;pointer-events:none;flex-wrap:wrap;
+    background:linear-gradient(rgba(9,13,18,.88) 55%,rgba(9,13,18,0))}
+  header>*{pointer-events:auto}
+  h1{font-size:15px;margin:0 8px 0 0;font-weight:600;letter-spacing:.3px}
+  h1 b{color:var(--acc);font-weight:700}
+  button{padding:6px 12px;border-radius:9px;border:1px solid var(--line2);background:#131c27;
+    color:var(--txt);font-size:12.5px;cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--acc);color:#b9d4ff}
+  button.on{background:#12283c;border-color:var(--acc);color:#a9ccff}
+  .grow{flex:1}
+  .sl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
+  input[type=range]{accent-color:var(--acc)}
+
+  #panel{position:fixed;top:62px;right:14px;width:312px;max-height:calc(100vh - 90px);
+    overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:12px;z-index:15;backdrop-filter:blur(10px);font-size:12.5px;scrollbar-width:thin}
+  #panel h2{margin:8px 0 6px;font-size:12px;letter-spacing:.5px;color:#7fa3cf;font-weight:600}
+  #panel h2:first-child{margin-top:0}
+  #meta{color:var(--dim);font-size:11.5px;margin-bottom:10px}
+  .trow{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+  .trow button{padding:4px 9px;font-size:11.5px;border-radius:7px}
+  .card{border:1px solid var(--line);border-radius:10px;padding:10px;margin:6px 0 10px;
+    background:rgba(16,24,34,.6)}
+  .card .t{font-size:14px;font-weight:600;color:#eef5ff}
+  .card .s{color:#8fb0d8;margin:3px 0 6px;font-size:11.5px}
+  .row{display:flex;justify-content:space-between;gap:8px;margin:2px 0}
+  .row .k{color:var(--dim)}
+  .row .v{text-align:right;color:#d7e4f5}
+  #empty{color:var(--dim);margin-bottom:8px;line-height:1.45}
+  ul{list-style:none;margin:0;padding:0}
+  li{display:flex;align-items:center;gap:8px;padding:3px 7px;border-radius:7px;cursor:pointer}
+  li:hover{background:#182437}
+  li.sel{background:#152a40;outline:1px solid #2c4666}
+  li .idx{color:#54687f;font-size:10.5px;width:20px}
+  li .nm{flex:1}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--warn);flex:none;transition:.2s}
+  .dot.ok{background:var(--ok)}
+  li.busy .dot{animation:pulse .7s infinite alternate}
+  @keyframes pulse{from{opacity:.35}to{opacity:1}}
+
+  details{border:1px solid var(--line);border-radius:10px;margin-bottom:7px;overflow:hidden}
+  details summary{padding:7px 10px;cursor:pointer;font-weight:600;font-size:12px;color:#b9d0ea;
+    background:rgba(20,30,42,.5);list-style:none;user-select:none}
+  details summary::before{content:"▸ ";color:var(--dim)}
+  details[open] summary::before{content:"▾ "}
+  details .body{padding:8px 10px}
+  .jrow{display:grid;grid-template-columns:fill;grid-template-columns:96px 1fr 46px;gap:7px;
+    align-items:center;margin:4px 0}
+  .jrow .jn{color:#a9c2e0;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .jrow .jv{color:#eaf2ff;font-size:11px;text-align:right}
+  .pbtn{padding:4px 10px;font-size:11.5px}
+  #poseName{color:var(--warn);font-size:11px;margin-left:6px}
+  .ab{color:#96aec8;font-size:11.5px;line-height:1.55}
+  .ab b{color:#d7e4f5}
+
+  #hint{position:fixed;bottom:10px;left:14px;z-index:20;font-size:11.5px;color:var(--dim);
+    text-shadow:0 1px 2px #000;pointer-events:none}
+
+  #labels{position:fixed;inset:0;z-index:10;pointer-events:none;overflow:hidden}
+  .lbl{position:absolute;left:0;top:0;font-size:10.5px;white-space:nowrap;color:#dce8f8;
+    background:rgba(8,12,18,.8);border:1px solid rgba(255,159,67,.4);padding:2px 8px;
+    border-radius:999px;will-change:transform}
+  .lbl.ok{border-color:rgba(57,217,138,.45)}
+  .lbl.hide{display:none}
+
+  #tip{position:fixed;z-index:30;display:none;pointer-events:none;background:rgba(14,21,30,.94);
+    border:1px solid #35507a;border-radius:10px;padding:9px 12px;font-size:12px;max-width:250px}
+  #tip .h{font-weight:600;color:#eef5ff;margin-bottom:2px}
+  #tip .m{color:#9fb6d2}
+  #tip .g{color:var(--dim);font-size:11px;margin-top:4px}
+
+  #loader{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;
+    flex-direction:column;align-items:center;justify-content:center;gap:16px}
+  #loader .lt{font-size:15px;letter-spacing:1px;color:#cfe0f4}
+  #loader .lt b{color:var(--acc)}
+  #barw{width:340px;height:6px;background:#182231;border-radius:99px;overflow:hidden}
+  #bar{height:100%;width:0;background:linear-gradient(90deg,#4f8cff,#39d98a);transition:width .2s}
+  #bart{font-size:12px;color:var(--dim)}
+  #err{color:#ff7a7a;font-size:12px;max-width:420px;text-align:center}
+  #fallback{position:fixed;inset:0;z-index:101;background:var(--bg);color:#ff9a9a;display:none;
+    align-items:center;justify-content:center;font-size:14px;text-align:center;padding:40px}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.js"}}</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<header>
+  <h1><b>RP1</b> · Interactive Assembly</h1>
+  <button id="bExplode">Explode all</button>
+  <button id="bAssemble">Assemble all</button>
+  <button id="bShot">Save PNG</button>
+  <div class="grow"></div>
+  <div class="sl">Spread <input id="gain" type="range" min="40" max="170" value="100"></div>
+</header>
+
+<div id="panel">
+  <h2>VIEW</h2>
+  <div class="trow">
+    <button id="bLabels">Labels</button>
+    <button id="bJoints">Joints axes</button>
+    <button id="bColliders">Colliders</button>
+    <button id="bCoM">CoM</button>
+    <button id="bGround" class="on">Ground pin</button>
+    <button id="bSpin" class="on">Spin</button>
+  </div>
+  <h2>CAMERA</h2>
+  <div class="trow">
+    <button id="cFront">Front</button><button id="cBack">Back</button>
+    <button id="cLeft">Left</button><button id="cRight">Right</button>
+    <button id="cTop">Top</button><button id="cIso">Iso</button>
+  </div>
+
+  <div class="card" id="card" style="display:none"></div>
+  <div id="empty">Click any part in the 3D view (or the list below) — click again on the floating part to install it. Click an installed part to remove it (its children go first).</div>
+
+  <h2>POSE <span id="poseName">stand</span></h2>
+  <div class="trow">
+    <button id="pStand" class="pbtn">Stand</button>
+    <button id="pSquat" class="pbtn">Squat</button>
+    <button id="pTpose" class="pbtn">T-pose</button>
+    <button id="pWave" class="pbtn">Wave</button>
+    <button id="pKick" class="pbtn">Kick</button>
+    <button id="pBow" class="pbtn">Bow</button>
+  </div>
+
+  <h2>PARTS LIST</h2>
+  <div id="meta"></div>
+  <ul id="list"></ul>
+
+  <h2>LEARN</h2>
+  <div id="joints"></div>
+  <details>
+    <summary>About RP1</summary>
+    <div class="body ab">
+      <b>RP1 humanoid</b> · 29 rigid links, <b>28 torque-controlled joints</b>, 41.1&nbsp;kg,
+      ≈1.4&nbsp;m tall. Mesh MJCF lives in <b>RP1_description/mjcf</b>.<br/>
+      <b>Legs 6 DoF each</b>: hip pitch / roll / yaw → knee → ankle pitch / roll.
+      <b>Torso 2</b>: waist roll + yaw.<br/>
+      <b>Arms 7 DoF each</b>: shoulder pitch / roll / yaw → elbow → wrist roll / yaw / pitch.<br/>
+      Actuators are limited from 32&nbsp;N·m (wrists) to 140&nbsp;N·m (hips / knees / waist);
+      friction + damping modelled per joint (damping 0.01–0.03, armature 0.003–0.029).<br/>
+      An <b>IMU site</b> sits in the pelvis; feet are approximated by 7 capsule contacts each
+      (see the <i>Colliders</i> toggle); the whole robot pins its soles to the ground via the
+      <i>Ground pin</i>, and the yellow ball tracks the <b>centre of mass</b> — watch it drop
+      when you squat.
+    </div>
+  </details>
+</div>
+
+<div id="hint">Left-drag · rotate&nbsp;&nbsp;|&nbsp;&nbsp;Wheel · zoom&nbsp;&nbsp;|&nbsp;&nbsp;Right-drag · pan&nbsp;&nbsp;|&nbsp;&nbsp;Click part · assemble / disassemble&nbsp;&nbsp;|&nbsp;&nbsp;Esc · deselect</div>
+<div id="labels" style="display:none"></div>
+<div id="tip"></div>
+
+<div id="loader">
+  <div class="lt"><b>RP1</b> HUMANOID · loading <span id="ltxt">0</span> parts</div>
+  <div id="barw"><div id="bar"></div></div>
+  <div id="bart">fetching meshes…</div>
+  <div id="err"></div>
+</div>
+<div id="fallback"><div>WebGL is unavailable in this browser.<br/>Try Chrome / Edge with hardware acceleration enabled.</div></div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
